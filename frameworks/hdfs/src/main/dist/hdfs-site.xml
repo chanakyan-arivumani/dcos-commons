@@ -20,7 +20,7 @@
     {{#TLS_ENABLED}}
     <property>
         <name>dfs.http.policy</name>
-        <value>HTTP_AND_HTTPS</value>
+        <value>HTTPS_ONLY</value>
     </property>
     {{/TLS_ENABLED}}
     <!-- namenode -->

@@ -15,7 +15,7 @@ pods:
     networks:
       {{VIRTUAL_NETWORK_NAME}}:
         labels: {{VIRTUAL_NETWORK_PLUGIN_LABELS}}
-    {{/ENABLE_VIRTUAL_NETWORK}}
+      {{/ENABLE_VIRTUAL_NETWORK}}
     tasks:
       node:
         goal: RUNNING
@@ -53,6 +53,9 @@ pods:
           ssl-server:
             template: ssl-server.xml
             dest: {{HDFS_VERSION}}/etc/hadoop/ssl-server.xml
+          ssl-client:
+            template: {{CONFIG_TEMPLATE_PATH}}/ssl-client.xml
+            dest: {{HDFS_VERSION}}/etc/hadoop/ssl-client.xml
           {{/TLS_ENABLED}}
         env:
           JOURNALNODE: true
@@ -72,6 +75,11 @@ pods:
           interval: 5
           timeout: 15
         {{/JOURNAL_READINESS_CHECK_ENABLED}}
+        {{#TLS_ENABLED}}
+        transport-encryption:
+          - name: node
+            type: KEYSTORE
+        {{/TLS_ENABLED}}
   name:
     count: 2
     uris:
@@ -136,9 +144,17 @@ pods:
           ssl-server:
             template: ssl-server.xml
             dest: {{HDFS_VERSION}}/etc/hadoop/ssl-server.xml
+          ssl-client:
+            template: {{CONFIG_TEMPLATE_PATH}}/ssl-client.xml
+            dest: {{HDFS_VERSION}}/etc/hadoop/ssl-client.xml
           {{/TLS_ENABLED}}
         env:
           NAMENODE: true
+        {{#TLS_ENABLED}}
+        transport-encryption:
+          - name: node
+            type: KEYSTORE
+        {{/TLS_ENABLED}}
       format:
         goal: FINISHED
         cmd: >
@@ -162,6 +178,9 @@ pods:
           ssl-server:
             template: ssl-server.xml
             dest: {{HDFS_VERSION}}/etc/hadoop/ssl-server.xml
+          ssl-client:
+            template: {{CONFIG_TEMPLATE_PATH}}/ssl-client.xml
+            dest: {{HDFS_VERSION}}/etc/hadoop/ssl-client.xml
           {{/TLS_ENABLED}}
         env:
           NAMENODE: true
@@ -188,9 +207,17 @@ pods:
           ssl-server:
             template: ssl-server.xml
             dest: {{HDFS_VERSION}}/etc/hadoop/ssl-server.xml
+          ssl-client:
+            template: {{CONFIG_TEMPLATE_PATH}}/ssl-client.xml
+            dest: {{HDFS_VERSION}}/etc/hadoop/ssl-client.xml
           {{/TLS_ENABLED}}
         env:
           NAMENODE: true
+        {{#TLS_ENABLED}}
+        transport-encryption:
+          - name: node
+            type: KEYSTORE
+        {{/TLS_ENABLED}}
       zkfc:
         goal: RUNNING
         cmd: >
@@ -214,6 +241,9 @@ pods:
           ssl-server:
             template: ssl-server.xml
             dest: {{HDFS_VERSION}}/etc/hadoop/ssl-server.xml
+          ssl-client:
+            template: {{CONFIG_TEMPLATE_PATH}}/ssl-client.xml
+            dest: {{HDFS_VERSION}}/etc/hadoop/ssl-client.xml
           {{/TLS_ENABLED}}
         env:
           ZKFC: true
@@ -240,6 +270,9 @@ pods:
           ssl-server:
             template: ssl-server.xml
             dest: {{HDFS_VERSION}}/etc/hadoop/ssl-server.xml
+          ssl-client:
+            template: {{CONFIG_TEMPLATE_PATH}}/ssl-client.xml
+            dest: {{HDFS_VERSION}}/etc/hadoop/ssl-client.xml
           {{/TLS_ENABLED}}
         env:
           ZKFC: true
@@ -305,7 +338,11 @@ pods:
           interval: 10
           delay: 120
           timeout: 60
-
+        {{#TLS_ENABLED}}
+        transport-encryption:
+          - name: node
+            type: KEYSTORE
+        {{/TLS_ENABLED}}
 plans:
   deploy:
     strategy: serial
