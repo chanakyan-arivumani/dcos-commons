@@ -6,7 +6,7 @@ import com.google.common.eventbus.EventBus;
 import com.google.protobuf.TextFormat;
 import com.mesosphere.sdk.offer.OfferUtils;
 import com.mesosphere.sdk.reconciliation.DefaultReconciler;
-import com.mesosphere.sdk.scheduler.plan.PlanManager;
+import com.mesosphere.sdk.scheduler.plan.PlanCoordinator;
 import com.mesosphere.sdk.specification.ServiceSpec;
 import com.mesosphere.sdk.state.ConfigStore;
 import com.mesosphere.sdk.state.StateStore;
@@ -44,6 +44,8 @@ public abstract class AbstractScheduler implements Scheduler {
     private Object inProgressLock = new Object();
     private Set<Protos.OfferID> offersInProgress = new HashSet<>();
 
+    private AtomicBoolean processingOffers = new AtomicBoolean(false);
+
     /**
      * Executor for handling TaskStatus updates in {@link #statusUpdate(SchedulerDriver, Protos.TaskStatus)}.
      */
@@ -60,7 +62,6 @@ public abstract class AbstractScheduler implements Scheduler {
     protected AbstractScheduler(StateStore stateStore, ConfigStore<ServiceSpec> configStore) {
         this.stateStore = stateStore;
         this.configStore = configStore;
-        processOffers();
     }
 
     @Override
@@ -95,6 +96,27 @@ public abstract class AbstractScheduler implements Scheduler {
 
     private void processOffers() {
         offerExecutor.execute(() -> {
+            while (!apiServerReady()) {
+                LOGGER.info("Waiting for API Server to start.");
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    LOGGER.debug("Waiting for API Server interrupted.", e);
+                }
+            }
+
+            // Task Reconciliation must complete before any Tasks may be launched.  It ensures that a Scheduler and
+            // Mesos have agreed upon the state of all Tasks of interest to the scheduler.
+            // http://mesos.apache.org/documentation/latest/reconciliation/
+            while (!reconciler.isReconciled()) {
+                LOGGER.info("Waiting for task reconciliation to complete.");
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    LOGGER.debug("Waiting for task reconciliation interrupted.", e);
+                }
+            }
+
             while (true) {
                 // This is a blocking call which pulls as many elements from the offer queue as possible.
                 List<Protos.Offer> offers = offerQueue.takeAll();
@@ -124,24 +146,6 @@ public abstract class AbstractScheduler implements Scheduler {
 
     @Override
     public void resourceOffers(SchedulerDriver driver, List<Protos.Offer> offers) {
-        if (!apiServerReady()) {
-            LOGGER.info("Declining {} offer{}: Waiting for API Server to start.",
-                    offers.size(), offers.size() == 1 ? "" : "s");
-            OfferUtils.declineOffers(driver, offers);
-            return;
-        }
-
-        // Task Reconciliation:
-        // Task Reconciliation must complete before any Tasks may be launched.  It ensures that a Scheduler and
-        // Mesos have agreed upon the state of all Tasks of interest to the scheduler.
-        // http://mesos.apache.org/documentation/latest/reconciliation/
-        reconciler.reconcile(driver);
-        if (!reconciler.isReconciled()) {
-            LOGGER.info("Declining {} offer{}: Waiting for task reconciliation to complete.",
-                    offers.size(), offers.size() == 1 ? "" : "s");
-            OfferUtils.declineOffers(driver, offers);
-            return;
-        }
 
         synchronized (inProgressLock) {
             offersInProgress.addAll(
@@ -234,15 +238,12 @@ public abstract class AbstractScheduler implements Scheduler {
         reconciler.start();
         reconciler.reconcile(driver);
         if (suppressReviveManager == null) {
-            suppressReviveManager = new SuppressReviveManager(
-                    stateStore,
-                    configStore,
-                    driver,
-                    eventBus,
-                    getPlanManagers());
+            suppressReviveManager = new SuppressReviveManager(driver, stateStore, eventBus, getPlanCoordinator());
         }
 
-        suppressReviveManager.start();
+        if (processingOffers.compareAndSet(false, true)) {
+            processOffers();
+        }
     }
 
     protected abstract void initialize(SchedulerDriver driver) throws InterruptedException;
@@ -251,5 +252,5 @@ public abstract class AbstractScheduler implements Scheduler {
 
     protected abstract void processOfferSet(List<Protos.Offer> offers);
 
-    protected abstract Collection<PlanManager> getPlanManagers();
+    protected abstract PlanCoordinator getPlanCoordinator();
 }
